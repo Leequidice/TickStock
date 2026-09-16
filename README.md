@@ -1,6 +1,6 @@
 # TickStock — Stock Discovery & Micro-Trading Feed on Solana
 
-> **Stocklana Hackathon Project** (Solana • Tokenized Stocks Theme)
+
 
 TickStock reimagines financial asset discovery for digital-native investors by combining intuitive swipe-based discovery with **sub-second, atomic on-chain micro-swaps on Solana Devnet**.
 
