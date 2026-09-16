@@ -19,6 +19,7 @@ import { BottomNav } from "@/components/common/BottomNav";
 import { FeedView } from "@/components/feed/FeedView";
 import { PortfolioView } from "@/components/portfolio/PortfolioView";
 import { LeaderboardView } from "@/components/social/LeaderboardView";
+import { LaunchView } from "@/components/launch/LaunchView";
 import { DemoGuideModal } from "@/components/common/DemoGuideModal";
 import { DelegationModal } from "@/components/common/DelegationModal";
 import { TransferModal } from "@/components/common/TransferModal";
@@ -69,7 +70,7 @@ export default function Home() {
   const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<"feed" | "portfolio" | "leaderboard">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "portfolio" | "leaderboard" | "launch">("feed");
   const [tradeAmount, setTradeAmountState] = useState<number>(25);
   const [transactions, setTransactions] = useState<TradeTransaction[]>([]);
   const [cashBalance, setCashBalance] = useState<number>(0);
@@ -416,6 +417,18 @@ export default function Home() {
             onPortfolioReset={handleRefreshTransactions}
             onExploreFeed={() => setActiveTab("feed")}
             onOpenTransfer={() => setIsTransferOpen(true)}
+          />
+        )}
+
+        {activeTab === "launch" && (
+          <LaunchView
+            network={network}
+            tradeAmount={tradeAmount}
+            cashBalance={cashBalance}
+            activeWalletPubkey={activePublicKey}
+            onTradeExecuted={handleRefreshTransactions}
+            onOpenDepositModal={() => setIsDepositModalOpen(true)}
+            onOpenAuthModal={() => setIsAuthOpen(true)}
           />
         )}
 

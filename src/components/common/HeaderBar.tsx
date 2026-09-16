@@ -21,8 +21,8 @@ interface HeaderBarProps {
   onToggleNetwork: (net: "devnet" | "mainnet") => void;
   tradeAmount: number;
   onChangeTradeAmount: (val: number) => void;
-  activeTab: "feed" | "portfolio" | "leaderboard";
-  onTabChange: (tab: "feed" | "portfolio" | "leaderboard") => void;
+  activeTab: "feed" | "portfolio" | "leaderboard" | "launch";
+  onTabChange: (tab: "feed" | "portfolio" | "leaderboard" | "launch") => void;
   cashBalance: number;
   delegatedAllowance: number;
   portfolioItemsCount?: number;
@@ -161,6 +161,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 {portfolioItemsCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => onTabChange("launch")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl transition-all",
+              activeTab === "launch"
+                ? "bg-slate-800 text-white shadow-sm font-bold"
+                : "text-slate-400 hover:text-slate-200"
+            )}
+          >
+            🚀 Launch
           </button>
           <button
             onClick={() => onTabChange("leaderboard")}

@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
-import { Flame, Briefcase, Trophy } from "lucide-react";
+import { Flame, Briefcase, Trophy, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface BottomNavProps {
-  activeTab: "feed" | "portfolio" | "leaderboard";
-  onTabChange: (tab: "feed" | "portfolio" | "leaderboard") => void;
+  activeTab: "feed" | "portfolio" | "leaderboard" | "launch";
+  onTabChange: (tab: "feed" | "portfolio" | "leaderboard" | "launch") => void;
   portfolioItemsCount: number;
 }
 
@@ -16,7 +16,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   portfolioItemsCount,
 }) => {
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 border-t border-slate-800/80 backdrop-blur-lg px-6 py-2 pb-5 flex items-center justify-around">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 border-t border-slate-800/80 backdrop-blur-lg px-4 py-2 pb-5 flex items-center justify-around">
       {/* Feed Button */}
       <button
         onClick={() => onTabChange("feed")}
@@ -27,6 +27,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       >
         <Flame className="w-5 h-5" />
         <span className="text-[10px] font-semibold">Feed</span>
+      </button>
+
+      {/* Launch Button */}
+      <button
+        onClick={() => onTabChange("launch")}
+        className={cn(
+          "flex flex-col items-center gap-1 transition-all",
+          activeTab === "launch" ? "text-solana-green scale-105" : "text-slate-400 hover:text-slate-200"
+        )}
+      >
+        <Rocket className="w-5 h-5" />
+        <span className="text-[10px] font-semibold">Launch</span>
       </button>
 
       {/* Portfolio Button */}
