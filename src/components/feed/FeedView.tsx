@@ -281,6 +281,39 @@ export const FeedView: React.FC<FeedViewProps> = ({
       }
 
       try {
+        // DBC Fair Launch Flow
+        if (stock.isDbc || stock.ticker === "AERO" || stock.id.startsWith("dbc-")) {
+          const dbcRes = await fetch("/api/launch/swap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userPublicKey: activeWalletPubkey.toBase58(),
+              usdAmount: tradeAmount,
+              network,
+              stockId: stock.id,
+            }),
+          });
+          const dbcData = await dbcRes.json();
+          if (!dbcRes.ok || !dbcData.success) {
+            setLastNotification({
+              type: "ERROR",
+              errorMessage: dbcData.error || "Meteora DBC trade execution failed.",
+            });
+            return;
+          }
+          setLastNotification({
+            type: "BUY",
+            stock,
+            shares: dbcData.shares,
+            amount: tradeAmount,
+            signature: dbcData.signature,
+            onChain: true,
+            explorerUrl: dbcData.explorerUrl,
+          });
+          onTradeExecuted();
+          return;
+        }
+
         const result: ExecutionResult = await executeAtomicSwipeBuy(
           stock,
           tradeAmount,

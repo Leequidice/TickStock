@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchDbcPoolStatus, METEORA_DEVNET_LAUNCH_STOCK } from "@/lib/meteora-dbc";
+import { getPersistedLaunchedPools } from "@/lib/dbc-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -7,12 +8,16 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const network = (searchParams.get("network") as "devnet" | "mainnet") || "devnet";
+    const stockId = searchParams.get("stockId") || "dbc-aero";
 
-    const status = await fetchDbcPoolStatus(network);
+    const allStocks = getPersistedLaunchedPools();
+    const stock = allStocks.find((p) => p.id === stockId) || allStocks[0] || METEORA_DEVNET_LAUNCH_STOCK;
+    const status = await fetchDbcPoolStatus(stock, network);
 
     return NextResponse.json({
       success: true,
-      stock: METEORA_DEVNET_LAUNCH_STOCK,
+      stock,
+      allStocks,
       pool: status,
     });
   } catch (error: any) {

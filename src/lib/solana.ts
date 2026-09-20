@@ -18,8 +18,12 @@ export type SolanaCluster = "devnet" | "mainnet-beta";
 export const DEVNET_RPC_ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
-export const MAINNET_RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
+export const MAINNET_RPC_ENDPOINTS = [
+  process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com",
+  "https://solana-rpc.publicnode.com",
+];
+
+export const MAINNET_RPC_ENDPOINT = MAINNET_RPC_ENDPOINTS[0];
 
 export function getSolanaConnection(network: "devnet" | "mainnet" = "devnet"): Connection {
   const endpoint = network === "mainnet" ? MAINNET_RPC_ENDPOINT : DEVNET_RPC_ENDPOINT;
@@ -30,23 +34,32 @@ export function getSolanaConnection(network: "devnet" | "mainnet" = "devnet"): C
 }
 
 /**
- * Fetch native SOL balance
+ * Fetch native SOL balance with multi-RPC fallback
  */
 export async function getSolBalance(
   connection: Connection,
   publicKey: PublicKey
 ): Promise<number> {
+  // Try primary connection first
   try {
     const lamports = await connection.getBalance(publicKey, "confirmed");
     return lamports / LAMPORTS_PER_SOL;
   } catch (error) {
-    console.error("Error fetching SOL balance:", error);
+    // Fallback attempt for Mainnet across all available endpoints
+    for (const endpoint of MAINNET_RPC_ENDPOINTS) {
+      try {
+        const fallbackConn = new Connection(endpoint, "confirmed");
+        const lamports = await fallbackConn.getBalance(publicKey, "confirmed");
+        return lamports / LAMPORTS_PER_SOL;
+      } catch {}
+    }
+    console.warn("Could not fetch SOL balance for", publicKey.toBase58(), error);
     return 0;
   }
 }
 
 /**
- * Fetch SPL token balance (supports both SPL Legacy and Token-2022)
+ * Fetch SPL token balance (supports both SPL Legacy and Token-2022) with fallback
  */
 export async function getSplTokenBalance(
   connection: Connection,
@@ -55,7 +68,7 @@ export async function getSplTokenBalance(
   decimals: number = 6,
   isToken2022: boolean = false
 ): Promise<number> {
-  try {
+  const tryFetch = async (conn: Connection) => {
     const programId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
     const ata = await getAssociatedTokenAddress(
       mintPublicKey,
@@ -64,8 +77,12 @@ export async function getSplTokenBalance(
       programId
     );
 
-    const tokenAccount = await getAccount(connection, ata, "confirmed", programId);
+    const tokenAccount = await getAccount(conn, ata, "confirmed", programId);
     return Number(tokenAccount.amount) / Math.pow(10, decimals);
+  };
+
+  try {
+    return await tryFetch(connection);
   } catch (error) {
     if (
       error instanceof TokenAccountNotFoundError ||
@@ -73,24 +90,19 @@ export async function getSplTokenBalance(
     ) {
       return 0;
     }
-    // Also try fallback to TOKEN_2022 if standard lookup fails
-    if (!isToken2022) {
+
+    // Try fallback endpoints for Mainnet
+    for (const endpoint of MAINNET_RPC_ENDPOINTS) {
       try {
-        const ata22 = await getAssociatedTokenAddress(
-          mintPublicKey,
-          ownerPublicKey,
-          false,
-          TOKEN_2022_PROGRAM_ID
-        );
-        const tokenAccount22 = await getAccount(
-          connection,
-          ata22,
-          "confirmed",
-          TOKEN_2022_PROGRAM_ID
-        );
-        return Number(tokenAccount22.amount) / Math.pow(10, decimals);
-      } catch {
-        return 0;
+        const fallbackConn = new Connection(endpoint, "confirmed");
+        return await tryFetch(fallbackConn);
+      } catch (err) {
+        if (
+          err instanceof TokenAccountNotFoundError ||
+          err instanceof TokenInvalidAccountOwnerError
+        ) {
+          return 0;
+        }
       }
     }
     return 0;

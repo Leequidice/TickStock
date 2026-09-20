@@ -13,6 +13,7 @@ import {
   Zap,
   Newspaper,
   Briefcase,
+  Rocket,
 } from "lucide-react";
 import { TokenizedStock } from "@/lib/stocks";
 import { TradePosition } from "@/lib/trade-store";
@@ -177,18 +178,25 @@ export const StockCard: React.FC<StockCardProps> = ({
                 <h2 className="text-xl font-black text-white tracking-tight">
                   {stock.ticker}
                 </h2>
-                <a
-                  href={getExplorerUrl(stock.mintAddress, "token")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-solana-purple/15 hover:bg-solana-purple/30 border border-solana-purple/40 text-solana-purple text-[10px] font-mono font-bold transition-colors"
-                  title="View SPL Mint on Solana Devnet Explorer"
-                >
-                  <CheckCircle2 className="w-3 h-3 text-solana-green" />
-                  <span>Devnet SPL</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                {stock.isDbc || stock.ticker === "AERO" ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-solana-green/20 border border-solana-green/50 text-solana-green text-[10px] font-mono font-black">
+                    <Rocket className="w-2.5 h-2.5" />
+                    <span>New Listing (DBC)</span>
+                  </span>
+                ) : (
+                  <a
+                    href={getExplorerUrl(stock.mintAddress, "token")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-solana-purple/15 hover:bg-solana-purple/30 border border-solana-purple/40 text-solana-purple text-[10px] font-mono font-bold transition-colors"
+                    title="View SPL Mint on Solana Devnet Explorer"
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-solana-green" />
+                    <span>Devnet SPL</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
               </div>
               <p className="text-xs text-slate-400 font-medium truncate max-w-[180px]">
                 {stock.name}
@@ -196,9 +204,14 @@ export const StockCard: React.FC<StockCardProps> = ({
             </div>
           </div>
 
-          {/* Sector Pill */}
-          <span className="px-2.5 py-1 rounded-full bg-surface-elevated border border-slate-700/80 text-slate-300 text-[10px] font-semibold tracking-wide">
-            {stock.sector}
+          {/* Sector / DBC Pill */}
+          <span className={cn(
+            "px-2.5 py-1 rounded-full border text-[10px] font-semibold tracking-wide",
+            stock.isDbc || stock.ticker === "AERO"
+              ? "bg-solana-green/10 border-solana-green/40 text-solana-green font-mono font-bold"
+              : "bg-surface-elevated border-slate-700/80 text-slate-300"
+          )}>
+            {stock.isDbc || stock.ticker === "AERO" ? "Meteora DBC" : stock.sector}
           </span>
         </div>
 

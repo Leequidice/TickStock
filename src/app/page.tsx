@@ -36,7 +36,7 @@ import {
   hasAcceptedMainnetRisk,
   setAcceptedMainnetRisk,
 } from "@/lib/trade-store";
-import { getSplTokenBalance, getSolanaConnection, DEVNET_RPC_ENDPOINT, MAINNET_RPC_ENDPOINT } from "@/lib/solana";
+import { getSplTokenBalance, getSolBalance, getSolanaConnection, DEVNET_RPC_ENDPOINT, MAINNET_RPC_ENDPOINT } from "@/lib/solana";
 import {
   getOrCreateInAppWallet,
   hasClaimedInitialDusd,
@@ -64,7 +64,7 @@ export default function Home() {
   const [isRiskModalOpen, setIsRiskModalOpen] = useState<boolean>(false);
   const [hasRiskAccepted, setHasRiskAccepted] = useState<boolean>(false);
 
-  // Mainnet Client Keypair (Self-Custodial Browser Vault)
+  // Mainnet Client Keypair (Self-Custodial Browser Vault / Unified Vault)
   const [mainnetKeypair, setMainnetKeypair] = useState<Keypair | null>(null);
   const [backupPrivateKeyBase58, setBackupPrivateKeyBase58] = useState<string>("");
   const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
@@ -74,6 +74,7 @@ export default function Home() {
   const [tradeAmount, setTradeAmountState] = useState<number>(25);
   const [transactions, setTransactions] = useState<TradeTransaction[]>([]);
   const [cashBalance, setCashBalance] = useState<number>(0);
+  const [solBalance, setSolBalance] = useState<number>(0);
   const [delegatedAllowance, setDelegatedAllowance] = useState<number>(0);
 
   // In-app Devnet Keypair
@@ -96,19 +97,25 @@ export default function Home() {
 
   // Active public key determination
   const isExternal = connected && !!externalPublicKey;
-  const activePublicKey: PublicKey = isMainnet
-    ? isExternal
-      ? externalPublicKey!
-      : mainnetKeypair
-      ? mainnetKeypair.publicKey
-      : activeProfile?.publicKey
-      ? new PublicKey(activeProfile.publicKey)
-      : new PublicKey("11111111111111111111111111111111")
-    : isExternal
-    ? externalPublicKey!
-    : devnetKeypair
-    ? devnetKeypair.publicKey
-    : new PublicKey("11111111111111111111111111111111");
+  const activePublicKey: PublicKey = useMemo(() => {
+    if (isExternal && externalPublicKey) return externalPublicKey;
+    if (isMainnet) {
+      if (mainnetKeypair) return mainnetKeypair.publicKey;
+      if (activeProfile?.publicKey) {
+        try {
+          return new PublicKey(activeProfile.publicKey);
+        } catch {}
+      }
+    } else {
+      if (devnetKeypair) return devnetKeypair.publicKey;
+      if (activeProfile?.publicKey) {
+        try {
+          return new PublicKey(activeProfile.publicKey);
+        } catch {}
+      }
+    }
+    return new PublicKey("11111111111111111111111111111111");
+  }, [isExternal, externalPublicKey, isMainnet, mainnetKeypair, devnetKeypair, activeProfile]);
 
   // 1. Initialize on mount
   useEffect(() => {
@@ -119,6 +126,8 @@ export default function Home() {
     const { keypair, isNew, profile } = getOrCreateInAppWallet();
     setDevnetKeypair(keypair);
     setDevnetSecretBase64(Buffer.from(keypair.secretKey).toString("base64"));
+    setMainnetKeypair(keypair);
+    setBackupPrivateKeyBase58(bs58.encode(keypair.secretKey));
     setActiveProfile(profile);
 
     // Auto-onboard custodial wallet on Devnet silently
@@ -132,9 +141,9 @@ export default function Home() {
     }
   }, [network]);
 
-  // 2. Load Mainnet self-custodial wallet from volatile session if already unlocked
+  // 2. Load Mainnet self-custodial wallet from volatile session if unlocked
   useEffect(() => {
-    if (isMainnet && activeProfile && activeProfile.provider !== "guest") {
+    if (activeProfile && activeProfile.provider !== "guest") {
       const unlocked = getUnlockedClientSession(activeProfile.id);
       if (unlocked) {
         setMainnetKeypair(unlocked);
@@ -142,7 +151,7 @@ export default function Home() {
         setBackupPrivateKeyBase58(b58);
       }
     }
-  }, [isMainnet, activeProfile]);
+  }, [activeProfile]);
 
   // 3. Synchronize real NextAuth Google session if active
   useEffect(() => {
@@ -151,62 +160,57 @@ export default function Home() {
       const name = session.user.name || "Google User";
       const userId = "google_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
-      if (network === "devnet") {
-        fetchOrCreateServerCustodialWallet({
-          userId,
-          name,
-          provider: "google",
-          email,
-        }).then(({ profile, keypair }) => {
-          setActiveProfile(profile);
-          setDevnetKeypair(keypair);
-          setDevnetSecretBase64(Buffer.from(keypair.secretKey).toString("base64"));
-        }).catch((err) => console.warn("Google devnet sync notice:", err));
-      } else {
-        // Mainnet: check if client wallet is already unlocked
-        const unlocked = getUnlockedClientSession(userId);
-        if (unlocked) {
-          setMainnetKeypair(unlocked);
-          const b58 = bs58.encode(unlocked.secretKey);
-          setBackupPrivateKeyBase58(b58);
-          setActiveProfile({
-            id: userId,
-            name,
-            provider: "google",
-            email,
-            publicKey: unlocked.publicKey.toBase58(),
-          });
-        }
-      }
+      fetchOrCreateServerCustodialWallet({
+        userId,
+        name,
+        provider: "google",
+        email,
+      }).then(({ profile, keypair }) => {
+        setActiveProfile(profile);
+        setDevnetKeypair(keypair);
+        setMainnetKeypair(keypair);
+        setDevnetSecretBase64(Buffer.from(keypair.secretKey).toString("base64"));
+        const b58 = bs58.encode(keypair.secretKey);
+        setBackupPrivateKeyBase58(b58);
+      }).catch((err) => console.warn("Google wallet sync notice:", err));
     }
-  }, [session, sessionStatus, network]);
+  }, [session, sessionStatus]);
 
-  // 4. Fetch balances for the active network
+  // 4. Fetch balances for the active network with automatic background polling
   const refreshWalletState = useCallback(async () => {
     if (!activePublicKey || activePublicKey.toBase58() === "11111111111111111111111111111111") {
       setCashBalance(0);
+      setSolBalance(0);
       return;
     }
 
     try {
       if (isMainnet) {
-        // Mainnet: Query real USDC balance on active public address
-        const usdcBal = await getSplTokenBalance(
-          activeConnection,
-          activePublicKey,
-          new PublicKey(MAINNET_USDC_MINT),
-          6
-        );
+        // Query live Mainnet SOL balance + real USDC balance
+        const [solBal, usdcBal] = await Promise.all([
+          getSolBalance(activeConnection, activePublicKey),
+          getSplTokenBalance(
+            activeConnection,
+            activePublicKey,
+            new PublicKey(MAINNET_USDC_MINT),
+            6
+          ),
+        ]);
+        setSolBalance(solBal);
         setCashBalance(usdcBal);
         setDelegatedAllowance(0);
       } else {
-        // Devnet: Query dUSD balance
-        const dUsdBal = await getSplTokenBalance(
-          activeConnection,
-          activePublicKey,
-          new PublicKey(DUSD_MINT_ADDRESS),
-          6
-        );
+        // Devnet: Query native SOL + dUSD balance
+        const [solBal, dUsdBal] = await Promise.all([
+          getSolBalance(activeConnection, activePublicKey),
+          getSplTokenBalance(
+            activeConnection,
+            activePublicKey,
+            new PublicKey(DUSD_MINT_ADDRESS),
+            6
+          ),
+        ]);
+        setSolBalance(solBal);
         setCashBalance(dUsdBal);
 
         if (isExternal) {
@@ -221,8 +225,11 @@ export default function Home() {
     }
   }, [activeConnection, activePublicKey, isExternal, isMainnet]);
 
+  // Active polling every 3.5 seconds
   useEffect(() => {
     refreshWalletState();
+    const interval = setInterval(refreshWalletState, 3500);
+    return () => clearInterval(interval);
   }, [refreshWalletState]);
 
   // Handle Network Switching
@@ -314,6 +321,7 @@ export default function Home() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         cashBalance={cashBalance}
+        solBalance={solBalance}
         delegatedAllowance={delegatedAllowance}
         portfolioItemsCount={positions.length}
         onOpenGuide={() => setIsGuideOpen(true)}
@@ -342,7 +350,7 @@ export default function Home() {
                   </div>
                   <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 p-2.5 bg-surface-card border border-slate-700 rounded-xl shadow-2xl text-[10px] text-slate-300 font-normal leading-relaxed z-50 pointer-events-none">
                     <div className="font-bold text-white mb-1">🔒 Technical Architecture</div>
-                    Client-side encrypted vault. Transactions are signed directly in your browser memory via Jupiter with zero server knowledge.
+                    Self-custodial encrypted vault. Plaintext keys never leave your device unencrypted. Export your key anytime.
                   </div>
                 </div>
               </div>
@@ -458,8 +466,9 @@ export default function Home() {
       <WalletBackupModal
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
+        userId={activeProfile?.id}
         privateKeyBase58={backupPrivateKeyBase58}
-        publicKey={activeProfile?.publicKey || mainnetKeypair?.publicKey.toBase58() || ""}
+        publicKey={activeProfile?.publicKey || mainnetKeypair?.publicKey.toBase58() || activePublicKey.toBase58()}
         onConfirmedBackup={handleBackupConfirmed}
       />
 

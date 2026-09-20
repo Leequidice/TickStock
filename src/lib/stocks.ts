@@ -4,7 +4,7 @@ export interface TokenizedStock {
   name: string;
   mintAddress: string;
   decimals: number;
-  sector: "AI & Chips" | "Big Tech" | "EV & Energy" | "Crypto Equity" | "Index / ETF" | "Media & Retail" | "Cloud & Defense";
+  sector: "AI & Chips" | "Big Tech" | "EV & Energy" | "Crypto Equity" | "Index / ETF" | "Media & Retail" | "Cloud & Defense" | "Aerospace & Deep Tech" | "Quantum Computing" | "Clean Biotech";
   basePrice: number;
   change24h: number;
   marketCap: string;
@@ -18,6 +18,8 @@ export interface TokenizedStock {
   underlyingAsset: string;
   isDevnetMock: boolean;
   isToken2022?: boolean;
+  isDbc?: boolean;
+  dbcPoolAddress?: string;
 }
 
 export const DUSD_MINT_ADDRESS =
@@ -32,6 +34,27 @@ export const SESSION_DELEGATE_PUBKEY =
  * Devnet Synthetic Stock Catalog (SPL Legacy Mints with sponsored gas & dUSD swaps)
  */
 export const DEVNET_MOCK_STOCKS: TokenizedStock[] = [
+  {
+    id: "dbc-aero",
+    ticker: "AERO",
+    name: "AeroOrbit Propulsion Labs",
+    mintAddress: "Gu6XmsKrk7AWn3JhN5dbgSNrJA37VAbr9QVXqcjczX3",
+    decimals: 6,
+    sector: "Aerospace & Deep Tech",
+    basePrice: 0.00277,
+    change24h: 12.45,
+    marketCap: "$27.7K",
+    volume24h: "$14.2K",
+    buySentimentPct: 96,
+    whyMoving: "Meteora Dynamic Bonding Curve fair-launch reaching 42.8% progress toward DAMM v2 migration threshold.",
+    catalystPills: ["DBC Fair Launch", "Meteora DAMM v2", "Conviction Gated"],
+    color: "#14F195",
+    gradient: "from-[#14F195]/20 via-[#14F195]/5 to-transparent",
+    underlyingAsset: "Meteora:DBC:AERO",
+    isDevnetMock: true,
+    isDbc: true,
+    dbcPoolAddress: "3oEBVanZw9AZ8LvhpN4w9EGP8DffqLJay5Qpnd5rr1k9",
+  },
   {
     id: "nvda",
     ticker: "NVDA",

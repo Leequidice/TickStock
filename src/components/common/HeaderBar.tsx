@@ -24,6 +24,7 @@ interface HeaderBarProps {
   activeTab: "feed" | "portfolio" | "leaderboard" | "launch";
   onTabChange: (tab: "feed" | "portfolio" | "leaderboard" | "launch") => void;
   cashBalance: number;
+  solBalance?: number;
   delegatedAllowance: number;
   portfolioItemsCount?: number;
   onOpenGuide: () => void;
@@ -43,6 +44,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   activeTab,
   onTabChange,
   cashBalance,
+  solBalance = 0,
   portfolioItemsCount = 0,
   onOpenGuide,
   onRequestDusdFaucet,
@@ -69,7 +71,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
         {/* Left: Logo & Network Toggle Switch */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Brand Logo (No technical subtitles) */}
+          {/* Brand Logo */}
           <div
             onClick={() => onTabChange("feed")}
             className="flex items-center gap-2 cursor-pointer select-none group"
@@ -94,13 +96,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </div>
           </div>
 
-          {/* Sleek Network Toggle Switch */}
+          {/* Network Toggle Switch */}
           <div className="flex items-center gap-1.5 bg-surface-card/90 px-2 py-1 rounded-full border border-slate-800 shadow-inner">
-            <span className={cn(
-              "text-[10px] font-mono font-bold transition-colors cursor-pointer select-none",
-              !isMainnet ? "text-solana-green" : "text-slate-500 hover:text-slate-400"
-            )}
-            onClick={() => isMainnet && onToggleNetwork("devnet")}
+            <span
+              className={cn(
+                "text-[10px] font-mono font-bold transition-colors cursor-pointer select-none",
+                !isMainnet ? "text-solana-green" : "text-slate-500 hover:text-slate-400"
+              )}
+              onClick={() => isMainnet && onToggleNetwork("devnet")}
             >
               Demo
             </span>
@@ -122,11 +125,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 )}
               />
             </button>
-            <span className={cn(
-              "text-[10px] font-mono font-bold transition-colors cursor-pointer select-none",
-              isMainnet ? "text-amber-400 font-black" : "text-slate-500 hover:text-slate-400"
-            )}
-            onClick={() => !isMainnet && onToggleNetwork("mainnet")}
+            <span
+              className={cn(
+                "text-[10px] font-mono font-bold transition-colors cursor-pointer select-none",
+                isMainnet ? "text-amber-400 font-black" : "text-slate-500 hover:text-slate-400"
+              )}
+              onClick={() => !isMainnet && onToggleNetwork("mainnet")}
             >
               Real
             </span>
@@ -147,6 +151,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             🔥 Feed
           </button>
           <button
+            onClick={() => onTabChange("launch")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl transition-all",
+              activeTab === "launch"
+                ? "bg-slate-800 text-white shadow-sm font-bold"
+                : "text-slate-400 hover:text-slate-200"
+            )}
+          >
+            🚀 Fair Launch
+          </button>
+          <button
             onClick={() => onTabChange("portfolio")}
             className={cn(
               "px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5",
@@ -157,21 +172,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           >
             <span>💼 Portfolio</span>
             {portfolioItemsCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-solana-purple text-[10px] font-mono font-bold text-white shadow-sm">
+              <span className="w-4 h-4 rounded-full bg-solana-green text-slate-950 text-[10px] font-bold flex items-center justify-center">
                 {portfolioItemsCount}
               </span>
             )}
-          </button>
-          <button
-            onClick={() => onTabChange("launch")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-xl transition-all",
-              activeTab === "launch"
-                ? "bg-slate-800 text-white shadow-sm font-bold"
-                : "text-slate-400 hover:text-slate-200"
-            )}
-          >
-            🚀 Launch
           </button>
           <button
             onClick={() => onTabChange("leaderboard")}
@@ -200,6 +204,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               {formatCurrency(cashBalance)}
             </span>
             <span className="text-[10px] text-slate-400 font-normal">{currencySymbol}</span>
+            {isMainnet && (
+              <span className="text-[10px] text-slate-400 font-mono font-normal pl-1 border-l border-slate-700">
+                {solBalance.toFixed(3)} SOL
+              </span>
+            )}
             {!isMainnet && cashBalance < 25 && (
               <button
                 onClick={onRequestDusdFaucet}
@@ -213,7 +222,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
           {/* Auth / Wallet Entry Point */}
           {!isGuest && activeProfile ? (
-            /* Logged in User Profile Chip */
             <button
               onClick={onOpenAuth}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-surface-card hover:bg-surface-elevated border border-slate-800 text-xs text-white transition-all shadow-sm"
@@ -228,7 +236,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
           ) : connected && publicKey ? (
-            /* Connected External Wallet Chip */
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setWalletModalVisible(true)}
@@ -249,7 +256,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </button>
             </div>
           ) : (
-            /* Not Logged In: Prominent Google Sign-in + Secondary External Wallet Option */
             <div className="flex items-center gap-1.5">
               <button
                 onClick={onOpenAuth}
@@ -303,65 +309,35 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                         setShowSettings(false);
                       }}
                       className={cn(
-                        "py-1.5 px-2 rounded-xl text-xs font-mono font-bold transition-all border",
+                        "py-1.5 px-2 rounded-xl text-xs font-mono font-bold border transition-colors",
                         tradeAmount === amt
-                          ? isMainnet
-                            ? "bg-amber-500/20 border-amber-500 text-amber-400"
-                            : "bg-solana-green/20 border-solana-green text-solana-green"
-                          : "bg-surface-elevated border-slate-700 text-slate-300 hover:border-slate-500"
+                          ? "bg-solana-green/20 border-solana-green text-solana-green"
+                          : "bg-surface-elevated border-slate-700 text-slate-300 hover:bg-slate-700"
                       )}
                     >
-                      ${amt}
+                      $${amt}
                     </button>
                   ))}
                 </div>
-
-                {/* Custom Amount Field */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const val = parseFloat(customInput);
-                    if (!isNaN(val) && val > 0) {
-                      onChangeTradeAmount(Number(val.toFixed(2)));
-                      setCustomInput("");
-                      setShowSettings(false);
-                    }
-                  }}
-                  className="pt-2 border-t border-slate-800"
-                >
-                  <label className="text-[10px] text-slate-400 font-mono block mb-1">
-                    Custom Buy Amount:
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">$</span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0.01"
-                        placeholder="e.g. 75"
-                        value={customInput}
-                        onChange={(e) => setCustomInput(e.target.value)}
-                        className="w-full pl-6 pr-2 py-1.5 rounded-xl bg-background border border-slate-700 text-xs font-mono text-white focus:outline-none focus:border-solana-green"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={!customInput || parseFloat(customInput) <= 0}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-colors disabled:opacity-40",
-                        isMainnet
-                          ? "bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300"
-                          : "bg-solana-green/20 hover:bg-solana-green/30 border border-solana-green/40 text-solana-green"
-                      )}
-                    >
-                      Set
-                    </button>
-                  </div>
-                </form>
-
-                <div className="text-[10px] text-slate-500 mt-2">
-                  {isMainnet ? "USDC swapped on Raydium/Jupiter." : "dUSD debited atomically on Devnet."}
+                <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5">
+                  <span className="text-xs font-mono text-slate-500">$</span>
+                  <input
+                    type="number"
+                    placeholder="Custom"
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customInput) {
+                        const val = parseFloat(customInput);
+                        if (!isNaN(val) && val > 0) {
+                          onChangeTradeAmount(val);
+                          setCustomInput("");
+                          setShowSettings(false);
+                        }
+                      }
+                    }}
+                    className="w-full bg-background border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-solana-green"
+                  />
                 </div>
               </div>
             )}
