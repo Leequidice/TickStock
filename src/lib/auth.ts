@@ -4,26 +4,41 @@ import GoogleProvider from "next-auth/providers/google";
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "dummy_google_client_id",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "dummy_google_client_secret",
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
   secret: process.env.NEXTAUTH_SECRET || "tickstock_hackathon_nextauth_secret_dev_2026",
   callbacks: {
-    async session({ session, token }) {
-      if (session?.user && token?.sub) {
-        (session.user as any).id = token.sub;
-      }
-      return session;
-    },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account, profile }) {
       if (user) {
         token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
       }
       return token;
     },
+    async session({ session, token }) {
+      if (session?.user) {
+        (session.user as any).id = token.id || token.sub;
+        if (token.email) session.user.email = token.email as string;
+        if (token.name) session.user.name = token.name as string;
+        if (token.picture) session.user.image = token.picture as string;
+      }
+      return session;
+    },
   },
-  pages: {
-    signIn: "/",
-  },
+  debug: process.env.NODE_ENV === "development",
 };

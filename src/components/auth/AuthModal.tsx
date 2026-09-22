@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Keypair } from "@solana/web3.js";
 import {
@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   HelpCircle,
+  AlertCircle,
+  Sparkles,
 } from "lucide-react";
 import {
   UserProfile,
@@ -60,6 +62,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     isCreation: boolean;
   } | null>(null);
 
+  // Check URL error parameter (e.g. from Google OAuth callback)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("error");
+      if (err) {
+        if (err === "OAuthCallback" || err === "Callback") {
+          setErrorMessage("Google OAuth callback error. Please check your Google account permissions or try PIN sign in.");
+        } else if (err === "OAuthSignin") {
+          setErrorMessage("Could not initialize Google OAuth sign in.");
+        } else {
+          setErrorMessage(`Sign in notice: ${err}`);
+        }
+      }
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const isMainnet = network === "mainnet";
@@ -68,11 +87,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      // Trigger real Google OAuth via NextAuth
-      await signIn("google", { callbackUrl: window.location.href });
+      // Trigger NextAuth Google OAuth flow
+      await signIn("google", { callbackUrl: window.location.origin });
     } catch (err: any) {
       console.error("Google sign in error:", err);
-      setErrorMessage("Could not connect to Google OAuth.");
+      setErrorMessage(err.message || "Could not connect to Google OAuth.");
       setIsLoading(false);
     }
   };
@@ -81,7 +100,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const email = session?.user?.email || "trader.pin@tickstock.app";
+      const email = session?.user?.email || "trader@tickstock.app";
       const name = session?.user?.name || "TickStock Trader";
       const userId = "user_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
@@ -183,7 +202,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-black text-white">
-                {isGuest ? "Sign In" : "Your Account"}
+                {isGuest ? "Sign In to TickStock" : "Your Account"}
               </h2>
               <p className="text-[11px] text-slate-400 font-mono">
                 {isMainnet ? "Mainnet Trading Account" : "Devnet Demo Account"}
@@ -192,8 +211,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           {errorMessage && (
-            <div className="p-3 mb-4 rounded-xl bg-loss/10 border border-loss/30 text-loss text-xs">
-              {errorMessage}
+            <div className="p-3 mb-4 rounded-xl bg-loss/10 border border-loss/30 text-loss text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
           )}
 
@@ -259,13 +279,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* Guest Sign-In Options */}
           {isGuest && (
             <div className="space-y-4">
-              {/* Plain Single-Sentence Description */}
               <p className="text-xs text-slate-300 leading-relaxed">
                 Sign in to start trading — your wallet is created automatically and only you can access it.
               </p>
 
-              {/* Real Google OAuth & Quick PIN buttons */}
               <div className="space-y-2.5">
+                {/* Google Sign-in */}
                 <button
                   type="button"
                   disabled={isLoading}
@@ -282,9 +301,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                     </svg>
                   )}
-                  <span>Sign In with Google</span>
+                  <span>Continue with Google</span>
                 </button>
 
+                {/* Instant PIN Wallet / Demo Sign-in */}
                 <button
                   type="button"
                   disabled={isLoading}
@@ -292,11 +312,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="w-full py-2.5 px-4 rounded-2xl bg-surface-elevated hover:bg-slate-700/80 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                 >
                   <Key className="w-3.5 h-3.5 text-solana-green" />
-                  <span>{isMainnet ? "Create / Unlock with PIN" : "Instant In-App Demo Wallet"}</span>
+                  <span>{isMainnet ? "Create / Unlock with Spending PIN" : "Instant In-App Demo Wallet"}</span>
                 </button>
               </div>
 
-              {/* Optional "How does this work?" link */}
+              {/* How does this work? */}
               <div className="pt-2">
                 <button
                   type="button"
