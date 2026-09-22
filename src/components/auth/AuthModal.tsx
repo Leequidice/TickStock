@@ -79,6 +79,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [isOpen]);
 
+  // Auto-sync session to profile if authenticated
+  useEffect(() => {
+    if (
+      sessionStatus === "authenticated" &&
+      session?.user?.email &&
+      (!activeProfile || activeProfile.provider === "guest")
+    ) {
+      const email = session.user.email;
+      const name = session.user.name || "Google User";
+      const userId = "google_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const syncedProfile: UserProfile = {
+        id: userId,
+        name,
+        email,
+        image: session.user.image || undefined,
+        provider: "google",
+        publicKey: activeProfile?.publicKey || "11111111111111111111111111111111",
+      };
+      setActiveUserProfile(syncedProfile);
+      onProfileChanged(syncedProfile);
+    }
+  }, [session, sessionStatus, activeProfile, onProfileChanged]);
+
   if (!isOpen) return null;
 
   const isMainnet = network === "mainnet";
@@ -88,7 +111,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMessage(null);
     try {
       // Trigger NextAuth Google OAuth flow
-      await signIn("google", { callbackUrl: window.location.origin });
+      await signIn("google");
     } catch (err: any) {
       console.error("Google sign in error:", err);
       setErrorMessage(err.message || "Could not connect to Google OAuth.");

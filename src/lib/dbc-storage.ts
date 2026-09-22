@@ -1,9 +1,23 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { DbcLaunchStock, METEORA_DEVNET_LAUNCH_STOCK } from "./meteora-dbc-types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const LAUNCHED_POOLS_FILE = path.join(DATA_DIR, "launched_pools.json");
+function getPoolsFilePath(): string {
+  const localDir = path.join(process.cwd(), "data");
+  try {
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+    const testFile = path.join(localDir, ".writable_check");
+    fs.writeFileSync(testFile, "ok", "utf8");
+    fs.unlinkSync(testFile);
+    return path.join(localDir, "launched_pools.json");
+  } catch {
+    const tmpDir = process.env.TMPDIR || os.tmpdir() || "/tmp";
+    return path.join(tmpDir, "tickstock_launched_pools.json");
+  }
+}
 
 export const INITIAL_LAUNCHED_POOLS: DbcLaunchStock[] = [
   METEORA_DEVNET_LAUNCH_STOCK,
@@ -49,32 +63,28 @@ export const INITIAL_LAUNCHED_POOLS: DbcLaunchStock[] = [
 
 let inMemoryCache: DbcLaunchStock[] | null = null;
 
-function ensureDataDir(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
 /**
  * Loads all launched pools from disk (survives restarts/reloads).
  */
 export function getPersistedLaunchedPools(): DbcLaunchStock[] {
   try {
-    ensureDataDir();
-    if (!fs.existsSync(LAUNCHED_POOLS_FILE)) {
-      fs.writeFileSync(LAUNCHED_POOLS_FILE, JSON.stringify(INITIAL_LAUNCHED_POOLS, null, 2), "utf8");
+    const filePath = getPoolsFilePath();
+    if (!fs.existsSync(filePath)) {
+      try {
+        fs.writeFileSync(filePath, JSON.stringify(INITIAL_LAUNCHED_POOLS, null, 2), "utf8");
+      } catch {}
       inMemoryCache = [...INITIAL_LAUNCHED_POOLS];
       return inMemoryCache;
     }
 
-    const raw = fs.readFileSync(LAUNCHED_POOLS_FILE, "utf8");
+    const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
       inMemoryCache = parsed;
       return parsed;
     }
   } catch (err) {
-    console.error("[DbcStorage] Error reading launched pools from disk:", err);
+    console.error("[DbcStorage] Error reading launched pools:", err);
   }
 
   if (!inMemoryCache) {
@@ -88,15 +98,16 @@ export function getPersistedLaunchedPools(): DbcLaunchStock[] {
  */
 export function savePersistedLaunchedPool(newPool: DbcLaunchStock): void {
   try {
-    ensureDataDir();
+    const filePath = getPoolsFilePath();
     const current = getPersistedLaunchedPools();
-    // Prepend new pool (or replace if existing ID)
     const filtered = current.filter((p) => p.id !== newPool.id && p.ticker !== newPool.ticker);
     const updated = [newPool, ...filtered];
-    fs.writeFileSync(LAUNCHED_POOLS_FILE, JSON.stringify(updated, null, 2), "utf8");
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), "utf8");
+    } catch {}
     inMemoryCache = updated;
   } catch (err) {
-    console.error("[DbcStorage] Error saving launched pool to disk:", err);
+    console.error("[DbcStorage] Error saving launched pool:", err);
     if (inMemoryCache) {
       inMemoryCache.unshift(newPool);
     }

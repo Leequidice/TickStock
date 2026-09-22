@@ -43,6 +43,7 @@ import {
   setClaimedInitialDusd,
   UserProfile,
   getActiveUserProfile,
+  setActiveUserProfile,
   fetchOrCreateServerCustodialWallet,
 } from "@/lib/custodial-wallet";
 import {
@@ -158,8 +159,25 @@ export default function Home() {
     if (sessionStatus === "authenticated" && session?.user?.email) {
       const email = session.user.email;
       const name = session.user.name || "Google User";
+      const image = session.user.image || undefined;
       const userId = "google_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
+      // Immediately establish authenticated profile state
+      setActiveProfile((prev) => {
+        if (prev && prev.email === email && prev.provider === "google") return prev;
+        const immediateProfile: UserProfile = {
+          id: userId,
+          name,
+          email,
+          image,
+          provider: "google",
+          publicKey: prev?.publicKey || "11111111111111111111111111111111",
+        };
+        setActiveUserProfile(immediateProfile);
+        return immediateProfile;
+      });
+
+      // Hydrate server custodial wallet keypair
       fetchOrCreateServerCustodialWallet({
         userId,
         name,
@@ -172,7 +190,9 @@ export default function Home() {
         setDevnetSecretBase64(Buffer.from(keypair.secretKey).toString("base64"));
         const b58 = bs58.encode(keypair.secretKey);
         setBackupPrivateKeyBase58(b58);
-      }).catch((err) => console.warn("Google wallet sync notice:", err));
+      }).catch((err) => {
+        console.warn("Google wallet sync notice:", err);
+      });
     }
   }, [session, sessionStatus]);
 
