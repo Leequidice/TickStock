@@ -1,6 +1,5 @@
 import {
   Connection,
-  clusterApiUrl,
   PublicKey,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
@@ -19,8 +18,9 @@ export const DEVNET_RPC_ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 export const MAINNET_RPC_ENDPOINTS = [
-  process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com",
+  process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://solana-rpc.publicnode.com",
+  "https://rpc.ankr.com/solana",
+  "https://api.mainnet-beta.solana.com",
 ];
 
 export const MAINNET_RPC_ENDPOINT = MAINNET_RPC_ENDPOINTS[0];
@@ -29,7 +29,7 @@ export function getSolanaConnection(network: "devnet" | "mainnet" = "devnet"): C
   const endpoint = network === "mainnet" ? MAINNET_RPC_ENDPOINT : DEVNET_RPC_ENDPOINT;
   return new Connection(endpoint, {
     commitment: "confirmed",
-    confirmTransactionInitialTimeout: 30000,
+    confirmTransactionInitialTimeout: 35000,
   });
 }
 
@@ -40,7 +40,7 @@ export async function getSolBalance(
   connection: Connection,
   publicKey: PublicKey
 ): Promise<number> {
-  // Try primary connection first
+  // Try provided connection first
   try {
     const lamports = await connection.getBalance(publicKey, "confirmed");
     return lamports / LAMPORTS_PER_SOL;
@@ -110,16 +110,23 @@ export async function getSplTokenBalance(
 }
 
 /**
- * Solana Explorer link generator
+ * Returns Solana Explorer URL for transactions, tokens, or accounts
  */
 export function getExplorerUrl(
   identifier: string,
-  type: "tx" | "address" | "token" = "tx",
+  type: "tx" | "token" | "address" | "devnet" | "mainnet" = "tx",
   network: "devnet" | "mainnet" = "devnet"
 ): string {
-  const clusterParam = network === "mainnet" ? "" : "?cluster=devnet";
-  if (type === "token" || type === "address") {
-    return `https://explorer.solana.com/address/${identifier}${clusterParam}`;
+  let targetNetwork = network;
+  let targetType: "tx" | "token" | "address" = "tx";
+
+  if (type === "devnet" || type === "mainnet") {
+    targetNetwork = type;
+    targetType = "tx";
+  } else {
+    targetType = type;
   }
-  return `https://explorer.solana.com/tx/${identifier}${clusterParam}`;
+
+  const base = `https://explorer.solana.com/${targetType === "tx" ? "tx" : "address"}/${identifier}`;
+  return targetNetwork === "mainnet" ? base : `${base}?cluster=devnet`;
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import React, { useState, useMemo } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { getSolanaConnection } from "@/lib/solana";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
   TrendingUp,
@@ -62,7 +63,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   onOpenTransfer,
 }) => {
   const { connected, publicKey: externalPublicKey, signTransaction, sendTransaction } = useWallet();
-  const { connection } = useConnection();
+  const connection = useMemo(() => getSolanaConnection(network), [network]);
 
   const [selectedSellPosition, setSelectedSellPosition] = useState<TradePosition | null>(null);
   const [sellSuccessToast, setSellSuccessToast] = useState<{

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { getSolanaConnection } from "@/lib/solana";
 import {
   Zap,
   CheckCircle2,
@@ -75,7 +76,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   hasAcceptedRisk = true,
 }) => {
   const { connected, publicKey: externalPublicKey, signTransaction, sendTransaction } = useWallet();
-  const { connection } = useConnection();
+  const connection = useMemo(() => getSolanaConnection(network), [network]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedSellPosition, setSelectedSellPosition] = useState<TradePosition | null>(null);

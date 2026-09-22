@@ -3,6 +3,7 @@
 import { Connection, Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { MAINNET_USDC_MINT, TokenizedStock } from "./stocks";
 import { saveTradeTransaction, TradeTransaction } from "./trade-store";
+import { getSolanaConnection, getSolBalance } from "./solana";
 
 export interface JupiterQuoteResponse {
   inputMint: string;
@@ -41,7 +42,7 @@ export function parseSolanaSimulationError(error: any): string {
     combined.includes("insufficient lamports") ||
     combined.includes("insufficient funds for fee") ||
     combined.includes("insufficient funds for rent") ||
-    combined.includes("0x1") && combined.includes("system")
+    (combined.includes("0x1") && combined.includes("system"))
   ) {
     return "Insufficient SOL balance for Solana transaction fees or token account rent (~0.003 SOL needed). Please add SOL to your wallet.";
   }
@@ -139,13 +140,15 @@ export async function executeMainnetClientKeypairSwap(
   stock: TokenizedStock,
   usdAmount: number
 ): Promise<JupiterSwapResult> {
+  const mainnetConn = getSolanaConnection("mainnet");
+
   try {
-    // 0. Pre-flight SOL balance check for gas & ATA rent
-    const solLamports = await connection.getBalance(clientKeypair.publicKey).catch(() => 0);
-    if (solLamports < 0.002 * 1e9) {
+    // 0. Pre-flight SOL balance check on Mainnet
+    const solBal = await getSolBalance(mainnetConn, clientKeypair.publicKey);
+    if (solBal < 0.001) {
       return {
         success: false,
-        error: `Insufficient SOL for network fees and token account rent (${(solLamports / 1e9).toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
+        error: `Insufficient SOL for network fees and token account rent (${solBal.toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
       };
     }
 
@@ -183,14 +186,14 @@ export async function executeMainnetClientKeypairSwap(
 
     // 5. Broadcast directly to Solana Mainnet-Beta
     const rawTransaction = transaction.serialize();
-    const signature = await connection.sendRawTransaction(rawTransaction, {
+    const signature = await mainnetConn.sendRawTransaction(rawTransaction, {
       skipPreflight: false,
       maxRetries: 3,
     });
 
     // 6. Confirm on Mainnet
-    const latestBlockHash = await connection.getLatestBlockhash("confirmed");
-    await connection.confirmTransaction(
+    const latestBlockHash = await mainnetConn.getLatestBlockhash("confirmed");
+    await mainnetConn.confirmTransaction(
       {
         blockhash: latestBlockHash.blockhash,
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -244,13 +247,15 @@ export async function executeMainnetJupiterSwap(
   stock: TokenizedStock,
   usdAmount: number
 ): Promise<JupiterSwapResult> {
+  const mainnetConn = getSolanaConnection("mainnet");
+
   try {
-    // 0. Pre-flight SOL balance check for gas & ATA rent
-    const solLamports = await connection.getBalance(wallet.publicKey).catch(() => 0);
-    if (solLamports < 0.002 * 1e9) {
+    // 0. Pre-flight SOL balance check on Mainnet
+    const solBal = await getSolBalance(mainnetConn, wallet.publicKey);
+    if (solBal < 0.001) {
       return {
         success: false,
-        error: `Insufficient SOL for network fees and token account rent (${(solLamports / 1e9).toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
+        error: `Insufficient SOL for network fees and token account rent (${solBal.toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
       };
     }
 
@@ -280,10 +285,10 @@ export async function executeMainnetJupiterSwap(
     const swapTxBuffer = Buffer.from(swapTransaction, "base64");
     const transaction = VersionedTransaction.deserialize(swapTxBuffer);
 
-    const signature = await wallet.sendTransaction(transaction, connection);
+    const signature = await wallet.sendTransaction(transaction, mainnetConn);
 
-    const latestBlockHash = await connection.getLatestBlockhash("confirmed");
-    await connection.confirmTransaction(
+    const latestBlockHash = await mainnetConn.getLatestBlockhash("confirmed");
+    await mainnetConn.confirmTransaction(
       {
         blockhash: latestBlockHash.blockhash,
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -332,6 +337,8 @@ export async function executeMainnetClientKeypairSell(
   stock: TokenizedStock,
   shares: number
 ): Promise<JupiterSwapResult> {
+  const mainnetConn = getSolanaConnection("mainnet");
+
   try {
     const inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
 
@@ -362,13 +369,13 @@ export async function executeMainnetClientKeypairSell(
     transaction.sign([clientKeypair]);
 
     const rawTransaction = transaction.serialize();
-    const signature = await connection.sendRawTransaction(rawTransaction, {
+    const signature = await mainnetConn.sendRawTransaction(rawTransaction, {
       skipPreflight: false,
       maxRetries: 3,
     });
 
-    const latestBlockHash = await connection.getLatestBlockhash("confirmed");
-    await connection.confirmTransaction(
+    const latestBlockHash = await mainnetConn.getLatestBlockhash("confirmed");
+    await mainnetConn.confirmTransaction(
       {
         blockhash: latestBlockHash.blockhash,
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -421,6 +428,8 @@ export async function executeMainnetJupiterSell(
   stock: TokenizedStock,
   shares: number
 ): Promise<JupiterSwapResult> {
+  const mainnetConn = getSolanaConnection("mainnet");
+
   try {
     const inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
 
@@ -448,10 +457,10 @@ export async function executeMainnetJupiterSell(
     const swapTxBuffer = Buffer.from(swapTransaction, "base64");
     const transaction = VersionedTransaction.deserialize(swapTxBuffer);
 
-    const signature = await wallet.sendTransaction(transaction, connection);
+    const signature = await wallet.sendTransaction(transaction, mainnetConn);
 
-    const latestBlockHash = await connection.getLatestBlockhash("confirmed");
-    await connection.confirmTransaction(
+    const latestBlockHash = await mainnetConn.getLatestBlockhash("confirmed");
+    await mainnetConn.confirmTransaction(
       {
         blockhash: latestBlockHash.blockhash,
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
