@@ -416,6 +416,7 @@ export default function Home() {
             tradeAmount={tradeAmount}
             onChangeTradeAmount={handleChangeTradeAmount}
             cashBalance={cashBalance}
+            solBalance={solBalance}
             activeWalletPubkey={activePublicKey}
             isCustodial={!isExternal && !isMainnet}
             custodialSecretKeyBase64={devnetSecretBase64}

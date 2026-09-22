@@ -39,6 +39,7 @@ interface FeedViewProps {
   tradeAmount: number;
   onChangeTradeAmount?: (val: number) => void;
   cashBalance: number;
+  solBalance?: number;
   activeWalletPubkey: PublicKey;
   isCustodial: boolean;
   custodialSecretKeyBase64?: string;
@@ -59,6 +60,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   tradeAmount,
   onChangeTradeAmount,
   cashBalance,
+  solBalance = 0,
   activeWalletPubkey,
   isCustodial,
   custodialSecretKeyBase64,
@@ -212,7 +214,17 @@ export const FeedView: React.FC<FeedViewProps> = ({
         if (cashBalance < tradeAmount) {
           setLastNotification({
             type: "ERROR",
-            errorMessage: `Insufficient USDC ($${cashBalance.toFixed(2)} available). Add money to trade.`,
+            errorMessage: `Insufficient USDC (${cashBalance.toFixed(2)} available). Please add USDC to trade.`,
+            showDeposit: true,
+          });
+          return;
+        }
+
+        // Mainnet Guard 4: Require minimum SOL for Solana network gas and token account rent
+        if (solBalance < 0.002) {
+          setLastNotification({
+            type: "ERROR",
+            errorMessage: `Insufficient SOL (${solBalance.toFixed(3)} SOL available). Solana requires ~0.003 SOL (~$0.40) for transaction fees and token account rent.`,
             showDeposit: true,
           });
           return;

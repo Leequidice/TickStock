@@ -30,6 +30,57 @@ export interface JupiterSwapResult {
 const JUPITER_API_BASE = "https://api.jup.ag/swap/v1";
 
 /**
+ * Parses raw Solana RPC simulation error logs into human-friendly explanations
+ */
+export function parseSolanaSimulationError(error: any): string {
+  const msg = error?.message || "";
+  const logs = Array.isArray(error?.logs) ? error.logs.join(" ") : "";
+  const combined = (msg + " " + logs).toLowerCase();
+
+  if (
+    combined.includes("insufficient lamports") ||
+    combined.includes("insufficient funds for fee") ||
+    combined.includes("insufficient funds for rent") ||
+    combined.includes("0x1") && combined.includes("system")
+  ) {
+    return "Insufficient SOL balance for Solana transaction fees or token account rent (~0.003 SOL needed). Please add SOL to your wallet.";
+  }
+
+  if (
+    combined.includes("custom: 0x1") ||
+    combined.includes("custom program error: 0x1") ||
+    combined.includes("insufficient funds")
+  ) {
+    return "Insufficient USDC token balance for this swap. Please check your USDC balance.";
+  }
+
+  if (
+    combined.includes("slippage") ||
+    combined.includes("0x1771") ||
+    combined.includes("6001") ||
+    combined.includes("slippagetoleranceexceeded")
+  ) {
+    return "Price moved beyond slippage tolerance (0.5%). Please try swiping again.";
+  }
+
+  if (
+    combined.includes("blockhash not found") ||
+    combined.includes("blockhash expired")
+  ) {
+    return "Transaction timed out on Solana network. Please try again.";
+  }
+
+  if (
+    combined.includes("attempt to debit an account but found no record of a prior credit") ||
+    combined.includes("account not found")
+  ) {
+    return "Your wallet has not been funded with USDC or SOL on Solana Mainnet yet. Please deposit funds.";
+  }
+
+  return msg || "Swap transaction failed on Solana Mainnet.";
+}
+
+/**
  * Fetches a market swap quote from Jupiter API
  */
 export async function getJupiterQuote(
@@ -89,6 +140,15 @@ export async function executeMainnetClientKeypairSwap(
   usdAmount: number
 ): Promise<JupiterSwapResult> {
   try {
+    // 0. Pre-flight SOL balance check for gas & ATA rent
+    const solLamports = await connection.getBalance(clientKeypair.publicKey).catch(() => 0);
+    if (solLamports < 0.002 * 1e9) {
+      return {
+        success: false,
+        error: `Insufficient SOL for network fees and token account rent (${(solLamports / 1e9).toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
+      };
+    }
+
     const inputAmountLamports = Math.round(usdAmount * 1_000_000); // 6 decimals for USDC
 
     // 1. Fetch live quote from Jupiter
@@ -163,9 +223,10 @@ export async function executeMainnetClientKeypairSwap(
     };
   } catch (error: any) {
     console.error("Mainnet In-Browser Jupiter Swap error:", error);
+    const friendlyError = parseSolanaSimulationError(error);
     return {
       success: false,
-      error: error.message || "Failed to execute Mainnet swap transaction",
+      error: friendlyError,
     };
   }
 }
@@ -184,6 +245,15 @@ export async function executeMainnetJupiterSwap(
   usdAmount: number
 ): Promise<JupiterSwapResult> {
   try {
+    // 0. Pre-flight SOL balance check for gas & ATA rent
+    const solLamports = await connection.getBalance(wallet.publicKey).catch(() => 0);
+    if (solLamports < 0.002 * 1e9) {
+      return {
+        success: false,
+        error: `Insufficient SOL for network fees and token account rent (${(solLamports / 1e9).toFixed(4)} SOL available). Your wallet needs at least ~0.003 SOL (~$0.40) to execute swaps on Solana Mainnet.`,
+      };
+    }
+
     const inputAmountLamports = Math.round(usdAmount * 1_000_000); // 6 decimals for USDC
 
     const quote = await getJupiterQuote(
@@ -245,9 +315,10 @@ export async function executeMainnetJupiterSwap(
     };
   } catch (error: any) {
     console.error("Mainnet Jupiter Swap error:", error);
+    const friendlyError = parseSolanaSimulationError(error);
     return {
       success: false,
-      error: error.message || "Failed to execute Mainnet swap transaction",
+      error: friendlyError,
     };
   }
 }
@@ -328,10 +399,11 @@ export async function executeMainnetClientKeypairSell(
       explorerUrl: `https://explorer.solana.com/tx/${signature}`,
     };
   } catch (error: any) {
-    console.error("Mainnet Client Sell error:", error);
+    console.error("Mainnet In-Browser Jupiter Sell error:", error);
+    const friendlyError = parseSolanaSimulationError(error);
     return {
       success: false,
-      error: error.message || "Failed to execute Mainnet sell transaction",
+      error: friendlyError,
     };
   }
 }
@@ -411,10 +483,10 @@ export async function executeMainnetJupiterSell(
     };
   } catch (error: any) {
     console.error("Mainnet Jupiter Sell error:", error);
+    const friendlyError = parseSolanaSimulationError(error);
     return {
       success: false,
-      error: error.message || "Failed to execute Mainnet sell transaction",
+      error: friendlyError,
     };
   }
 }
-
