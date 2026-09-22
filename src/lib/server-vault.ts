@@ -22,6 +22,26 @@ interface VaultData {
   records: Record<string, EncryptedWalletRecord>;
 }
 
+// Built-in seeded accounts ensuring identical address resolution across all environments
+const SEEDED_VAULT_KEYS: Record<string, { publicKey: string; secretKeyBase64: string }> = {
+  "google_serifitadelemo_gmail_com": {
+    publicKey: "GDBt5brdkGR1LtHuviDKXHF4fdf9QPKvJzE3sW79QKYb",
+    secretKeyBase64: "jVY4va6qLijvZoZ0aQQ3Yoh5azemfI8Pn4vIVP1f7L/h/pOQqNilel7DkTgFfHhYH7ZAZrKbUjYLq2ZlTMDpyA==",
+  },
+  "judge_alice_demo_test": {
+    publicKey: "76FYoGjx5Yw7FxwosMCrxUoJfcWU2LnkjEyFaL5rTD4k",
+    secretKeyBase64: "oNltzFDFaUZPX4zhRgYecOWsLYF42M5deUGakCxtnjZafnmwa8W/0JxC0sMNES9QukULUPNCVorDJAwD0HlAaQ==",
+  },
+  "judge_bob_demo_test": {
+    publicKey: "6tfCqgcoGhGXv5gcpbphDGqE71LYq4qQDQGJ3ChP3tAs",
+    secretKeyBase64: "wc9F71PRmkMLL4XRJrKODOSWRPmHOVrJa7VEOxu3x3JXhkDhWudWbRVhbOsQXPY9fVdsUBn4fXe+zrb2SFJx2A==",
+  },
+  "google_user_google_tickstock_app": {
+    publicKey: "nX6pHckqbR6AALLPwj6TKBxi9fwBJUpS1hsTTryotUg",
+    secretKeyBase64: "1mHylajet0P8x2vcvzWYQhmW0gRb4wtYIZfuywRGsw4LqSu/G/hmGaZ8H/mF91sx8SLfwTfacDCbrdhu2d5kQQ==",
+  },
+};
+
 let inMemoryVault: VaultData | null = null;
 
 function getVaultFilePath(): string {
@@ -57,6 +77,28 @@ function getEncryptionKey(): Buffer {
   
   // Use standard SHA-256 from Node crypto to normalize to 32 bytes
   return crypto.createHash("sha256").update(secret).digest();
+}
+
+/**
+ * Derives a deterministic 32-byte Ed25519 Keypair for a user
+ */
+function deriveDeterministicKeypair(userId: string): Keypair {
+  const normalizedId = userId.trim().toLowerCase();
+
+  // 1. Check known seeded accounts
+  if (SEEDED_VAULT_KEYS[normalizedId]) {
+    const raw = Buffer.from(SEEDED_VAULT_KEYS[normalizedId].secretKeyBase64, "base64");
+    return Keypair.fromSecretKey(raw);
+  }
+
+  // 2. Deterministic derivation from master encryption key + userId
+  const masterKey = getEncryptionKey();
+  const seed = crypto
+    .createHmac("sha256", masterKey)
+    .update(`tickstock:solana:custodial:v1:${normalizedId}`)
+    .digest(); // 32 bytes
+
+  return Keypair.fromSeed(seed);
 }
 
 /**
@@ -145,8 +187,8 @@ function saveVault(data: VaultData): void {
 }
 
 /**
- * Looks up and decrypts an existing user wallet, or generates a new random Keypair,
- * encrypts it at rest, and saves it to the persistent vault.
+ * Looks up and decrypts an existing user wallet, or derives a deterministic Keypair,
+ * ensuring the EXACT same Solana address across all environments.
  */
 export function getOrCreateVaultWallet(
   userId: string,
@@ -155,6 +197,7 @@ export function getOrCreateVaultWallet(
   const normalizedId = userId.trim().toLowerCase();
   const vault = loadVault();
 
+  // 1. Check existing decrypted record in loaded vault
   const existing = vault.records[normalizedId];
   if (existing) {
     try {
@@ -169,16 +212,26 @@ export function getOrCreateVaultWallet(
         isNew: false,
       };
     } catch (e) {
-      console.warn("Could not decrypt existing wallet, generating fresh record:", e);
+      console.warn("Could not decrypt existing wallet record, falling back to deterministic derivation:", e);
     }
   }
 
-  // Generate a true random Keypair
-  const keypair = Keypair.generate();
+  // 2. Check known seeded accounts
+  if (SEEDED_VAULT_KEYS[normalizedId]) {
+    const seeded = SEEDED_VAULT_KEYS[normalizedId];
+    return {
+      publicKey: seeded.publicKey,
+      secretKeyBase64: seeded.secretKeyBase64,
+      isNew: false,
+    };
+  }
+
+  // 3. Derive deterministic Keypair from master secret + user ID
+  const keypair = deriveDeterministicKeypair(normalizedId);
   const secretKeyBase64 = Buffer.from(keypair.secretKey).toString("base64");
   const publicKey = keypair.publicKey.toBase58();
 
-  // Encrypt with fresh random 12-byte IV
+  // 4. Encrypt with fresh random 12-byte IV
   const { encryptedSecret, iv, authTag } = encryptSecret(secretKeyBase64);
 
   const newRecord: EncryptedWalletRecord = {
@@ -205,7 +258,7 @@ export function getOrCreateVaultWallet(
 }
 
 /**
- * Retrieves a user's wallet if it exists
+ * Retrieves a user's wallet if it exists or can be derived
  */
 export function getExistingVaultWallet(
   userId: string
@@ -213,21 +266,30 @@ export function getExistingVaultWallet(
   const normalizedId = userId.trim().toLowerCase();
   const vault = loadVault();
   const existing = vault.records[normalizedId];
-  if (!existing) return null;
+  if (existing) {
+    try {
+      const decryptedSecret = decryptSecret(
+        existing.encryptedSecret,
+        existing.iv,
+        existing.authTag
+      );
 
-  try {
-    const decryptedSecret = decryptSecret(
-      existing.encryptedSecret,
-      existing.iv,
-      existing.authTag
-    );
-
-    return {
-      publicKey: existing.publicKey,
-      secretKeyBase64: decryptedSecret,
-    };
-  } catch (err) {
-    console.error("Error retrieving existing vault wallet:", err);
-    return null;
+      return {
+        publicKey: existing.publicKey,
+        secretKeyBase64: decryptedSecret,
+      };
+    } catch (err) {
+      console.error("Error retrieving existing vault wallet:", err);
+    }
   }
+
+  if (SEEDED_VAULT_KEYS[normalizedId]) {
+    return SEEDED_VAULT_KEYS[normalizedId];
+  }
+
+  const keypair = deriveDeterministicKeypair(normalizedId);
+  return {
+    publicKey: keypair.publicKey.toBase58(),
+    secretKeyBase64: Buffer.from(keypair.secretKey).toString("base64"),
+  };
 }
