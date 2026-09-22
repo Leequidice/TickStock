@@ -1,6 +1,12 @@
 "use client";
 
 import { Connection, Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
+import {
+  getAssociatedTokenAddress,
+  getAccount,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+} from "@solana/spl-token";
 import { MAINNET_USDC_MINT, TokenizedStock } from "./stocks";
 import { saveTradeTransaction, TradeTransaction } from "./trade-store";
 import { getSolanaConnection, getSolBalance } from "./solana";
@@ -33,7 +39,11 @@ const JUPITER_API_BASE = "https://api.jup.ag/swap/v1";
 /**
  * Parses raw Solana RPC simulation error logs into human-friendly explanations
  */
-export function parseSolanaSimulationError(error: any): string {
+export function parseSolanaSimulationError(
+  error: any,
+  isSell: boolean = false,
+  ticker?: string
+): string {
   const msg = error?.message || "";
   const logs = Array.isArray(error?.logs) ? error.logs.join(" ") : "";
   const combined = (msg + " " + logs).toLowerCase();
@@ -44,7 +54,7 @@ export function parseSolanaSimulationError(error: any): string {
     combined.includes("insufficient funds for rent") ||
     (combined.includes("0x1") && combined.includes("system"))
   ) {
-    return "Insufficient SOL balance for Solana transaction fees or token account rent (~0.003 SOL needed). Please add SOL to your wallet.";
+    return "Insufficient SOL balance for Solana transaction fees (~0.003 SOL needed). Please add a small amount of SOL.";
   }
 
   if (
@@ -52,7 +62,9 @@ export function parseSolanaSimulationError(error: any): string {
     combined.includes("custom program error: 0x1") ||
     combined.includes("insufficient funds")
   ) {
-    return "Insufficient USDC token balance for this swap. Please check your USDC balance.";
+    return isSell
+      ? `Insufficient ${ticker || "stock"} token balance for this sell order.`
+      : "Insufficient USDC token balance for this trade. Please add USDC to your wallet.";
   }
 
   if (
@@ -61,7 +73,7 @@ export function parseSolanaSimulationError(error: any): string {
     combined.includes("6001") ||
     combined.includes("slippagetoleranceexceeded")
   ) {
-    return "Price moved beyond slippage tolerance (0.5%). Please try swiping again.";
+    return "Price moved beyond slippage tolerance (0.5%). Please try again.";
   }
 
   if (
@@ -75,7 +87,9 @@ export function parseSolanaSimulationError(error: any): string {
     combined.includes("attempt to debit an account but found no record of a prior credit") ||
     combined.includes("account not found")
   ) {
-    return "Your wallet has not been funded with USDC or SOL on Solana Mainnet yet. Please deposit funds.";
+    return isSell
+      ? `No ${ticker || "stock"} token account found in wallet.`
+      : "Your wallet has not been funded with USDC or SOL on Solana Mainnet yet. Please deposit funds.";
   }
 
   return msg || "Swap transaction failed on Solana Mainnet.";
@@ -226,7 +240,7 @@ export async function executeMainnetClientKeypairSwap(
     };
   } catch (error: any) {
     console.error("Mainnet In-Browser Jupiter Swap error:", error);
-    const friendlyError = parseSolanaSimulationError(error);
+    const friendlyError = parseSolanaSimulationError(error, false, stock.ticker);
     return {
       success: false,
       error: friendlyError,
@@ -320,7 +334,7 @@ export async function executeMainnetJupiterSwap(
     };
   } catch (error: any) {
     console.error("Mainnet Jupiter Swap error:", error);
-    const friendlyError = parseSolanaSimulationError(error);
+    const friendlyError = parseSolanaSimulationError(error, false, stock.ticker);
     return {
       success: false,
       error: friendlyError,
@@ -340,7 +354,32 @@ export async function executeMainnetClientKeypairSell(
   const mainnetConn = getSolanaConnection("mainnet");
 
   try {
-    const inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
+    // 0. Query on-chain token balance to clamp lamports precisely
+    const programId = stock.isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    const ata = await getAssociatedTokenAddress(
+      new PublicKey(stock.mintAddress),
+      clientKeypair.publicKey,
+      false,
+      programId
+    );
+
+    let maxAvailableLamports = 0;
+    try {
+      const tokenAcc = await getAccount(mainnetConn, ata, "confirmed", programId);
+      maxAvailableLamports = Number(tokenAcc.amount);
+    } catch {}
+
+    let inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
+    if (maxAvailableLamports > 0 && inputAmountLamports > maxAvailableLamports) {
+      inputAmountLamports = maxAvailableLamports;
+    }
+
+    if (inputAmountLamports <= 0) {
+      return {
+        success: false,
+        error: `No on-chain balance found in your wallet for ${stock.ticker}.`,
+      };
+    }
 
     const quote = await getJupiterQuote(
       stock.mintAddress,
@@ -407,7 +446,7 @@ export async function executeMainnetClientKeypairSell(
     };
   } catch (error: any) {
     console.error("Mainnet In-Browser Jupiter Sell error:", error);
-    const friendlyError = parseSolanaSimulationError(error);
+    const friendlyError = parseSolanaSimulationError(error, true, stock.ticker);
     return {
       success: false,
       error: friendlyError,
@@ -431,7 +470,31 @@ export async function executeMainnetJupiterSell(
   const mainnetConn = getSolanaConnection("mainnet");
 
   try {
-    const inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
+    const programId = stock.isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    const ata = await getAssociatedTokenAddress(
+      new PublicKey(stock.mintAddress),
+      wallet.publicKey,
+      false,
+      programId
+    );
+
+    let maxAvailableLamports = 0;
+    try {
+      const tokenAcc = await getAccount(mainnetConn, ata, "confirmed", programId);
+      maxAvailableLamports = Number(tokenAcc.amount);
+    } catch {}
+
+    let inputAmountLamports = Math.round(shares * Math.pow(10, stock.decimals));
+    if (maxAvailableLamports > 0 && inputAmountLamports > maxAvailableLamports) {
+      inputAmountLamports = maxAvailableLamports;
+    }
+
+    if (inputAmountLamports <= 0) {
+      return {
+        success: false,
+        error: `No on-chain balance found in your wallet for ${stock.ticker}.`,
+      };
+    }
 
     const quote = await getJupiterQuote(
       stock.mintAddress,
@@ -492,7 +555,7 @@ export async function executeMainnetJupiterSell(
     };
   } catch (error: any) {
     console.error("Mainnet Jupiter Sell error:", error);
-    const friendlyError = parseSolanaSimulationError(error);
+    const friendlyError = parseSolanaSimulationError(error, true, stock.ticker);
     return {
       success: false,
       error: friendlyError,

@@ -30,7 +30,7 @@ export const SellModal: React.FC<SellModalProps> = ({
   if (!isOpen || !position || !stock) return null;
 
   const currentPrice = stock.basePrice;
-  const sharesToSell = Number(((position.shares * sellPercentage) / 100).toFixed(6));
+  const sharesToSell = sellPercentage === 100 ? position.shares : (position.shares * sellPercentage) / 100;
   const estimatedProceeds = Number((sharesToSell * currentPrice).toFixed(2));
   const currencySymbol = network === "mainnet" ? "USDC" : "dUSD";
 
