@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { getSolanaConnection } from "@/lib/solana";
+import { getSolanaConnection, getSplTokenBalance } from "@/lib/solana";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
   TrendingUp,
@@ -74,6 +74,40 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
     explorerUrl?: string;
   } | null>(null);
 
+  const [onChainHoldings, setOnChainHoldings] = useState<Record<string, number>>({});
+
+  const refreshOnChainHoldings = useCallback(async () => {
+    if (!activeWalletPubkey || activeWalletPubkey.toBase58() === "11111111111111111111111111111111") return;
+    try {
+      const holdings: Record<string, number> = {};
+      await Promise.all(
+        stocks.map(async (stock) => {
+          try {
+            const bal = await getSplTokenBalance(
+              connection,
+              activeWalletPubkey,
+              new PublicKey(stock.mintAddress),
+              stock.decimals,
+              stock.isToken2022
+            );
+            if (bal > 0) {
+              holdings[stock.id] = bal;
+            }
+          } catch {}
+        })
+      );
+      setOnChainHoldings(holdings);
+    } catch (err) {
+      console.warn("Could not query on-chain stock balances:", err);
+    }
+  }, [connection, activeWalletPubkey, stocks]);
+
+  useEffect(() => {
+    refreshOnChainHoldings();
+    const interval = setInterval(refreshOnChainHoldings, 4000);
+    return () => clearInterval(interval);
+  }, [refreshOnChainHoldings]);
+
   const {
     positions,
     totalValue,
@@ -82,7 +116,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
     totalPnlPercent,
     totalBuys,
     totalSkips,
-  } = calculatePortfolioPositions(stocks, transactions);
+  } = calculatePortfolioPositions(stocks, transactions, onChainHoldings);
 
   const netWorth = totalValue + dusdBalance;
   const isPositive = totalPnlUsd >= 0;

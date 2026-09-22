@@ -90,11 +90,12 @@ export function clearTradeHistory(network: "devnet" | "mainnet" = "devnet"): voi
 }
 
 /**
- * Aggregates all trade transactions into current portfolio positions
+ * Aggregates trade transactions AND merges live on-chain token balances into accurate portfolio positions
  */
 export function calculatePortfolioPositions(
   stocks: TokenizedStock[],
-  transactions: TradeTransaction[]
+  transactions: TradeTransaction[],
+  onChainHoldings?: Record<string, number>
 ): {
   positions: TradePosition[];
   totalValue: number;
@@ -119,13 +120,14 @@ export function calculatePortfolioPositions(
       continue;
     }
 
-    const stock = stockMap.get(tx.stockId);
+    const stock = stockMap.get(tx.stockId) || stocks.find((s) => s.ticker.toUpperCase() === tx.ticker.toUpperCase());
     const currentPrice = stock ? stock.basePrice : tx.price;
+    const stockId = stock ? stock.id : tx.stockId;
 
-    let pos = posMap.get(tx.stockId);
+    let pos = posMap.get(stockId);
     if (!pos) {
       pos = {
-        stockId: tx.stockId,
+        stockId,
         ticker: tx.ticker,
         name: stock ? stock.name : tx.ticker,
         shares: 0,
@@ -138,7 +140,7 @@ export function calculatePortfolioPositions(
         isSimulated: tx.isSimulated,
         transactions: [],
       };
-      posMap.set(tx.stockId, pos);
+      posMap.set(stockId, pos);
     }
 
     if (tx.type === "BUY") {
@@ -160,6 +162,38 @@ export function calculatePortfolioPositions(
     pos.transactions.push(tx);
   }
 
+  // Merge live on-chain holdings if available
+  if (onChainHoldings) {
+    for (const [stockId, onChainShares] of Object.entries(onChainHoldings)) {
+      if (onChainShares > 0.000001) {
+        const stock = stockMap.get(stockId);
+        let pos = posMap.get(stockId);
+        if (!pos) {
+          pos = {
+            stockId,
+            ticker: stock ? stock.ticker : stockId.toUpperCase(),
+            name: stock ? stock.name : stockId,
+            shares: onChainShares,
+            totalUsdInvested: onChainShares * (stock ? stock.basePrice : 1),
+            averageBuyPrice: stock ? stock.basePrice : 1,
+            currentPrice: stock ? stock.basePrice : 1,
+            currentValue: onChainShares * (stock ? stock.basePrice : 1),
+            pnlUsd: 0,
+            pnlPercent: 0,
+            isSimulated: false,
+            transactions: [],
+          };
+          posMap.set(stockId, pos);
+        } else {
+          // Sync position shares to on-chain truth if higher or updated
+          if (Math.abs(pos.shares - onChainShares) > 0.000001) {
+            pos.shares = onChainShares;
+          }
+        }
+      }
+    }
+  }
+
   // Calculate averages and PnL
   const positions: TradePosition[] = [];
   let totalValue = 0;
@@ -167,7 +201,7 @@ export function calculatePortfolioPositions(
 
   posMap.forEach((pos) => {
     if (pos.shares > 0.000001) {
-      pos.averageBuyPrice = pos.shares > 0 ? pos.totalUsdInvested / pos.shares : 0;
+      pos.averageBuyPrice = pos.shares > 0 ? pos.totalUsdInvested / pos.shares : pos.currentPrice;
       pos.currentValue = pos.shares * pos.currentPrice;
       pos.pnlUsd = pos.currentValue - pos.totalUsdInvested;
       pos.pnlPercent =

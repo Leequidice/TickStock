@@ -196,6 +196,11 @@ export default function Home() {
     }
   }, [session, sessionStatus]);
 
+  // Reload trade history whenever switching tabs or network
+  useEffect(() => {
+    setTransactions(getTradeHistory(network));
+  }, [activeTab, network]);
+
   // 4. Fetch balances for the active network with automatic background polling
   const refreshWalletState = useCallback(async () => {
     if (!activePublicKey || activePublicKey.toBase58() === "11111111111111111111111111111111") {
